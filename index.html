@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Advanced YT Player</title>
+    <style>
+        body { 
+            background-color: #2c2c2c; /* Dark Gray */
+            color: #00ffff;           /* Cyan */
+            font-family: 'Courier New', Courier, monospace; 
+            margin: 20px; 
+        }
+        input, button, select {
+            background-color: #444;
+            color: #00ffff;
+            border: 1px solid #00ffff;
+            padding: 5px;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #00ffff;
+            color: #2c2c2c;
+            cursor: pointer;
+        }
+        #playlist-table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-top: 20px; 
+            border: 1px solid #00ffff;
+        }
+        #playlist-table th, #playlist-table td { 
+            border: 1px solid #00ffff; 
+            padding: 8px; 
+            text-align: left; 
+        }
+        #playlist-table th { background: #333; }
+        .controls { 
+            margin: 15px 0; 
+            padding: 15px; 
+            border: 1px solid #00ffff; 
+            border-radius: 8px; 
+        }
+        input[type="range"] { width: 300px; accent-color: #00ffff; }
+        a { color: #00ffff; }
+    </style>
+</head>
+<body>
+
+    <!-- Video Load Section -->
+    <div class="controls">
+        <label>Video URL:</label>
+        <input type="text" id="video-url" placeholder="https://youtube.com..." style="width: 350px;">
+        <button onclick="loadVideo()">Load Video</button>
+    </div>
+
+    <div id="player"></div>
+
+    <div class="controls">
+        <label>Playback Speed: <span id="speed-val">1.00</span>x</label><br>
+        0.75 <input type="range" id="speed-slider" min="0.75" max="1.5" step="0.01" value="1.00"> 1.5
+        <br><br>
+
+        <!-- Volume Control -->
+        <label>Volume: <span id="volume-val">100</span>%</label><br>
+        0 <input type="range" id="volume-slider" min="0" max="100" step="1" value="100"> 100
+        <br><br>
+
+        <!-- 名前変更と新ボタン追加 -->
+        <button onclick="captureCue()">1. Set Cue</button>
+        <button onclick="jumpToCue()" style="background-color: #005555;">Jump to Cue</button>
+        
+        Memory: <span id="cue-display">0.000</span> sec
+        <br><br>
+        
+        <label>Memo:</label>
+        <input type="text" id="memo" placeholder="Enter notes...">
+        <button onclick="addToPlaylist()">2. Add to Playlist</button>
+    </div>
+
+    <h3>Playlist</h3>
+    <table id="playlist-table">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>URL</th>
+                <th>Speed</th>
+                <th>Start (sec)</th>
+                <th>Memo</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody id="playlist-body"></tbody>
+    </table>
+
+    <div class="controls" style="border-color: #ff00ff;">
+    <h3>Playlist Management</h3>
+    <button onclick="exportToCSV()">Export to CSV</button>
+    <input type="file" id="import-file" accept=".csv" style="display:none;" onchange="importFromCSV(this)">
+    <button onclick="document.getElementById('import-file').click()">Import from CSV</button>
+</div>
+
+<script>
+    // YouTube APIのセーフティロード（読み込み済みチェック）
+    (function() {
+        // 1. API準備完了時の処理 (修正: 既存コードを整理)
+        window.onYouTubeIframeAPIReady = function() {
+            console.log("API CALL SUCCESS!");
+            player = new YT.Player('player', {
+                height: '360', width: '640',
+                videoId: 'M7lc1UVf-VE',
+                events: {
+                    'onReady': () => {
+                        isPlayerReady = true;
+                        console.log("Player is Ready!");
+                        document.getElementById('status').innerText = "Status: Ready";
+                    }
+                }
+            });
+        }
+
+        // 2. セーフティチェック：APIが既に読み込まれている場合は手動で実行
+        if (typeof YT !== 'undefined' && YT.loaded) {
+            onYouTubeIframeAPIReady();
+        } else {
+            // まだならスクリプトを動的に追加
+            const tag = document.createElement('script');
+            tag.src = "https://www.youtube.com/iframe_api";
+            const firstScriptTag = document.getElementsByTagName('script')[0];
+            firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+        }
+    })();
+
+    let player;
+    let isPlayerReady = false; // 1. 準備フラグ
+    let currentCueTime = 0;
+    let playlist = [];
+
+    var tag = document.createElement('script');
+    tag.src = "https://youtube.com";
+    document.body.appendChild(tag);
+
+    // URLからIDだけを抽出する最小構成
+    function extractVideoId(url) {
+        const match = url.match(/(?:v=|youtu\.be\/|embed\/|^)([a-zA-Z0-9_-]{11})/);
+        return (match && match[1]) ? match[1] : null; // [1]でID文字列のみを抽出
+    }
+
+    function loadVideo() {
+        if (!isPlayerReady) return alert("Wait for player...");
+        const urlInput = document.getElementById('video-url').value.trim();
+        const videoId = extractVideoId(urlInput); // 変数名をvideoIdに統一
+        
+        if (videoId) {
+            player.loadVideoById(videoId);
+        } else {
+            alert("Invalid URL");
+        }
+    }
+
+    // speed-slider
+    const slider = document.getElementById('speed-slider');
+    slider.oninput = function() {
+        if (isPlayerReady) player.setPlaybackRate(parseFloat(this.value));
+        document.getElementById('speed-val').innerText = parseFloat(this.value).toFixed(2);
+    };
+
+    // Volume Slider Control
+    const volSlider = document.getElementById('volume-slider');
+    const volVal = document.getElementById('volume-val');
+
+    volSlider.oninput = function() {
+        if (!isPlayerReady) return;
+        const volume = parseInt(this.value);
+        volVal.innerText = volume;
+        // YouTube APIで音量を設定 (0-100)
+        player.setVolume(volume);
+    };https://www.youtube.com/watch?v=MkYgfrf95c8
+
+    // 現在の位置を記憶する
+    function captureCue() {
+        if (isPlayerReady) {
+            currentCueTime = player.getCurrentTime();
+            document.getElementById('cue-display').innerText = currentCueTime.toFixed(3);
+            console.log("Cue Set at:", currentCueTime);
+        }
+    }
+
+    // 記憶した位置（currentCueTime）にジャンプ
+    function jumpToCue() {
+        if (isPlayerReady && currentCueTime !== 0) {
+            // seekTo(秒数, true) で即座に移動
+            player.seekTo(currentCueTime, true);
+            console.log("Jumped to:", currentCueTime);
+        } else if (currentCueTime === 0) {
+            alert("Please 'Set Cue' first!");
+        }
+    }
+
+    function addToPlaylist() {
+        const data = player.getVideoData();
+        playlist.push({
+            title: data.title || "Untitled",
+            url: player.getVideoUrl(),
+            speed: slider.value,
+            startTime: currentCueTime.toFixed(3),
+            memo: document.getElementById('memo').value
+        });
+        renderPlaylist();
+    }
+
+    function renderPlaylist() {
+        const tbody = document.getElementById('playlist-body');
+        tbody.innerHTML = playlist.map((item, i) => `
+            <tr>
+                <td>${item.title}</td>
+                <td><a href="${item.url}" target="_blank">Link</a></td>
+                <td>${item.speed}x</td>
+                <td>${item.startTime}</td>
+                <td>${item.memo}</td>
+                <td><button onclick="playItem(${i})">Play</button></td>
+            </tr>`).join('');
+    }
+
+    function playItem(index) {
+        const item = playlist[index];
+        const videoId = extractVideoId(item.url);
+        player.loadVideoById({
+            videoId: videoId,
+            startSeconds: parseFloat(item.startTime)
+        });
+        setTimeout(() => player.setPlaybackRate(parseFloat(item.speed)), 800);
+    }
+
+    // 1. Export: プレイリストをCSVとしてダウンロード
+    function exportToCSV() {
+        if (playlist.length === 0) return alert("Playlist is empty!");
+
+        const headers = ["Title", "URL", "Speed", "StartPos", "Memo"];
+        const rows = playlist.map(item => [
+            `"${item.title.replace(/"/g, '""')}"`, // カンマや引用符対策
+            item.url,
+            item.speed,
+            item.startTime,
+            `"${item.memo.replace(/"/g, '""')}"`
+        ]);
+
+        let csvContent = "data:text/csv;charset=utf-8," 
+            + headers.join(",") + "\n" 
+            + rows.map(e => e.join(",")).join("\n");
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "yt_playlist.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    // 2. Import: CSVファイルを読み込んでプレイリストに反映
+    function importFromCSV(input) {
+        const file = input.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const text = e.target.result;
+            const lines = text.split("\n");
+            const newItems = [];
+
+            // 1行目はヘッダーなので i=1 から開始
+            for (let i = 1; i < lines.length; i++) {
+                if (!lines[i].trim()) continue;
+                
+                // 簡易的なカンマ区切り解析（※引用符内のカンマは考慮していません）
+                const cols = lines[i].split(",");
+                if (cols.length >= 4) {
+                    newItems.push({
+                        title: cols[0].replace(/"/g, ""),
+                        url: cols[1],
+                        speed: cols[2],
+                        startTime: cols[3],
+                        memo: cols[4] ? cols[4].replace(/"/g, "") : ""
+                    });
+                }
+            }
+
+            if (newItems.length > 0) {
+                playlist = playlist.concat(newItems);
+                renderPlaylist();
+                alert(`${newItems.length} items imported!`);
+            }
+            input.value = ""; // 同じファイルを再度選べるようにリセット
+        };
+        reader.readAsText(file);
+    }
+
+function onYouTubeIframeAPIReady() {
+        console.log("API CALL SUCCESS!");
+        player = new YT.Player('player', {
+            height: '360', width: '640',
+            videoId: 'M7lc1UVf-VE',
+            events: { 'onReady': function() { isPlayerReady = true; } }
+        });
+    }
+</script>
+</body>
+</html>
