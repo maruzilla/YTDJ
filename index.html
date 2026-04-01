@@ -48,16 +48,18 @@
 
     <!-- Video Load Section -->
     <div class="controls">
-        <label>Video URL:</label>
+        <label>URL:</label>
         <input type="text" id="video-url" placeholder="https://youtube.com..." style="width: 350px;">
-        <button onclick="loadVideo()">Load Video</button>
+        <button onclick="loadVideo()">Load</button>
+        <button onclick="pasteAndLoad()" style="border-color: #ff00ff; color: #ff00ff;">Paste & Load</button>
     </div>
 
     <div id="player"></div>
 
     <div class="controls">
-        <label>Playback Speed: <span id="speed-val">1.00</span>x</label><br>
-        0.75 <input type="range" id="speed-slider" min="0.75" max="1.5" step="0.01" value="1.00"> 1.5
+        <label>Playback Speed: <span id="speed-val">100</span>%</label><br>
+        75% <input type="range" id="speed-slider" min="0.75" max="1.5" step="0.01" value="1.00"> 150%
+        <button onclick="adjustSpeed(-0.01)">&nbsp;&nbsp;-&nbsp;&nbsp;</button><button onclick="adjustSpeed(0.01)">&nbsp;&nbsp;+&nbsp;&nbsp;</button>
         <br><br>
 
         <!-- Volume Control -->
@@ -66,15 +68,15 @@
         <br><br>
 
         <!-- 名前変更と新ボタン追加 -->
-        <button onclick="captureCue()">1. Set Cue</button>
-        <button onclick="jumpToCue()" style="background-color: #005555;">Jump to Cue</button>
+        <button onclick="captureCue()">&nbsp;&nbsp;Set Cue&nbsp;&nbsp;</button>
+        <button onclick="jumpToCue()" style="background-color: #005555;">&nbsp;Jump to Cue&nbsp;</button>
         
-        Memory: <span id="cue-display">0.000</span> sec
+        Cue-point: <span id="cue-display">0.000</span> sec
         <br><br>
         
         <label>Memo:</label>
         <input type="text" id="memo" placeholder="Enter notes...">
-        <button onclick="addToPlaylist()">2. Add to Playlist</button>
+        <button onclick="addToPlaylist()">Add to Playlist</button>
     </div>
 
     <h3>Playlist</h3>
@@ -94,9 +96,9 @@
 
     <div class="controls" style="border-color: #ff00ff;">
     <h3>Playlist Management</h3>
-    <button onclick="exportToCSV()">Export to CSV</button>
     <input type="file" id="import-file" accept=".csv" style="display:none;" onchange="importFromCSV(this)">
     <button onclick="document.getElementById('import-file').click()">Import from CSV</button>
+    <button onclick="exportToCSV()">Export to CSV</button>
 </div>
 
 <script>
@@ -145,6 +147,7 @@
         return (match && match[1]) ? match[1] : null; // [1]でID文字列のみを抽出
     }
 
+    // URLからロード
     function loadVideo() {
         if (!isPlayerReady) return alert("Wait for player...");
         const urlInput = document.getElementById('video-url').value.trim();
@@ -157,11 +160,35 @@
         }
     }
 
+    // クリップボードから貼り付けて即座にロード
+    async function pasteAndLoad() {
+        if (!isPlayerReady) return alert("Player is not ready yet.");
+
+        try {
+            // クリップボードのテキストを取得
+            const text = await navigator.clipboard.readText();
+            
+            // 入力ボックスに値をセット（視覚的なフィードバック）
+            const urlInput = document.getElementById('video-url');
+            urlInput.value = text.trim();
+            
+            // 既存のloadVideo関数を呼び出し
+            loadVideo();
+            
+            console.log("Pasted and loading:", text);
+        } catch (err) {
+            console.error('Failed to read clipboard:', err);
+            alert("Clipboard access denied. Please allow permission or paste manually.");
+        }
+    }
+
     // speed-slider
     const slider = document.getElementById('speed-slider');
     slider.oninput = function() {
-        if (isPlayerReady) player.setPlaybackRate(parseFloat(this.value));
-        document.getElementById('speed-val').innerText = parseFloat(this.value).toFixed(2);
+        if (!isPlayerReady) return;
+        const speed = parseFloat(this.value);
+        document.getElementById('speed-val').innerText = Math.round(speed * 100);
+        player.setPlaybackRate(speed);
     };
 
     // Volume Slider Control
@@ -196,6 +223,32 @@
         }
     }
 
+    // 速度を増減させる関数
+    function adjustSpeed(delta) {
+        if (!isPlayerReady) return;
+
+        const slider = document.getElementById('speed-slider');
+        const speedVal = document.getElementById('speed-val');
+        
+        // 現在の値を取得して計算（誤差防止のため小数点第2位で丸める）
+        let newSpeed = parseFloat(slider.value) + delta;
+        newSpeed = Math.round(newSpeed * 100) / 100;
+
+        // 範囲制限 (0.75 - 1.5)
+        if (newSpeed < 0.75) newSpeed = 0.75;
+        if (newSpeed > 1.5) newSpeed = 1.5;
+
+        // UIとプレイヤーへの反映
+        slider.value = newSpeed.toFixed(2);
+        // 表示のみ100倍して整数にする
+        speedVal.innerText = Math.round(newSpeed * 100); 
+        
+        player.setPlaybackRate(newSpeed);
+
+        
+        console.log("Speed adjusted to:", newSpeed);
+    }
+
     function addToPlaylist() {
         const data = player.getVideoData();
         playlist.push({
@@ -222,13 +275,39 @@
     }
 
     function playItem(index) {
+        if (!isPlayerReady) return;
+
         const item = playlist[index];
-        const videoId = extractVideoId(item.url);
+        const vid = extractVideoId(item.url);
+
+        if (!vid) return alert("Invalid URL in Playlist.");
+
+        // 1. まず動画をロード（念のためstartSecondsも指定）
         player.loadVideoById({
-            videoId: videoId,
-            startSeconds: parseFloat(item.startTime)
+            videoId: vid,
+            startSeconds: parseFloat(item.startTime),
+            suggestedQuality: 'default'
         });
-        setTimeout(() => player.setPlaybackRate(parseFloat(item.speed)), 800);
+
+        // 2. ロード直後に「強制的に」指定位置へジャンプさせる (少し遅延を入れる)
+        setTimeout(() => {
+            const targetTime = parseFloat(item.startTime);
+            const targetSpeed = parseFloat(item.speed);
+
+            // 強制シーク (allowSeekAhead: true)
+            player.seekTo(targetTime, true);
+            
+            // 速度の適用
+            player.setPlaybackRate(targetSpeed);
+
+            // UI（スライダーと%表記）の同期
+            const slider = document.getElementById('speed-slider');
+            const speedVal = document.getElementById('speed-val');
+            slider.value = targetSpeed.toFixed(2);
+            speedVal.innerText = Math.round(targetSpeed * 100);
+
+            console.log(`Force sync: ${targetTime}s at ${Math.round(targetSpeed * 100)}%`);
+        }, 500); // 0.5秒待ってから実行
     }
 
     // 1. Export: プレイリストをCSVとしてダウンロード
@@ -288,7 +367,7 @@
             if (newItems.length > 0) {
                 playlist = playlist.concat(newItems);
                 renderPlaylist();
-                alert(`${newItems.length} items imported!`);
+                //alert(`${newItems.length} items imported!`);
             }
             input.value = ""; // 同じファイルを再度選べるようにリセット
         };
