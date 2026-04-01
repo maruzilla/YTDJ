@@ -1,5 +1,7 @@
 # YTDJ - Precision YouTube DJ Player
 
+Demo: https://maruzilla.github.io/YTDJ/
+
 **YTDJ** is a high-performance web-based video player designed for music enthusiasts and DJs who want precise control over YouTube content. It allows for millisecond-perfect cueing, ultra-fine playback speed adjustments, and playlist management with metadata.
 
 ## 🚀 Key Features
