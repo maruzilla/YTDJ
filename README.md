@@ -23,13 +23,13 @@ Demo: https://maruzilla.github.io/YTDJ/
 
 ## 📖 How to Use
 
-1. **Load a Track**: Paste a YouTube URL into the input box and click **"Load Video"**.
+1. **Load a Track**: Paste a YouTube URL into the input box and click **"Load"**.
 2. **Fine-tune Speed**: Use the slider to adjust the tempo (0.01 steps).
 3. **Mark your Cue**: 
    - Click **"Set Cue"** at the exact moment you want to remember.
    - Use **"Jump to Cue"** to return to that spot instantly.
 4. **Build Playlist**: Add a memo and click **"Add to Playlist"** to save the current configuration (Speed + Timestamp).
-5. **Save/Load Set**: Use the **Export/Import** buttons to manage your playlist via CSV files.
+5. **Load/Save Set**: Use the **Import/Export** buttons to manage your playlist via CSV files.
 
 ## ⚙️ Installation & Deployment
 
