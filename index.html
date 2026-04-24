@@ -57,7 +57,7 @@
     <div id="player"></div>
 
     <div class="controls">
-        <label>Playback Speed: <span id="speed-val">100</span>%</label><br>
+        <label>Pitch: <span id="speed-val">100</span>%</label><br>
         75% <input type="range" id="speed-slider" min="0.75" max="1.5" step="0.01" value="1.00"> 150%
         <button onclick="adjustSpeed(-0.01)">&nbsp;&nbsp;-&nbsp;&nbsp;</button><button onclick="adjustSpeed(0.01)">&nbsp;&nbsp;+&nbsp;&nbsp;</button>
         <br><br>
@@ -214,14 +214,18 @@
 
     // 記憶した位置（currentCueTime）にジャンプ
     function jumpToCue() {
-        if (isPlayerReady && currentCueTime !== 0) {
+        // seekTo(秒数, true) で即座に移動
+        player.seekTo(currentCueTime, true);
+        console.log("Jumped to:", currentCueTime);
+
+        /*         if (isPlayerReady && currentCueTime !== 0) {
             // seekTo(秒数, true) で即座に移動
             player.seekTo(currentCueTime, true);
             console.log("Jumped to:", currentCueTime);
         } else if (currentCueTime === 0) {
             alert("Please 'Set Cue' first!");
         }
-    }
+ */    }
 
     // 速度を増減させる関数
     function adjustSpeed(delta) {
@@ -244,9 +248,10 @@
         speedVal.innerText = Math.round(newSpeed * 100); 
         
         player.setPlaybackRate(newSpeed);
-
-        
-        console.log("Speed adjusted to:", newSpeed);
+        // 実際にプレイヤーが受け入れた速度を確認
+        let actualSpeed = player.getPlaybackRate(); 
+        console.log("Requested:", newSpeed, "Actual:", actualSpeed);
+        //console.log("Speed adjusted to:", newSpeed);
     }
 
     function addToPlaylist() {
